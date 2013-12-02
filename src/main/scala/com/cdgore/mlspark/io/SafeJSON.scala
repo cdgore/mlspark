@@ -1,4 +1,4 @@
-package com.retentionscience.rsml.io
+package com.cdgore.mlspark.io
 
 import java.util.Random
 import spark.SparkContext
