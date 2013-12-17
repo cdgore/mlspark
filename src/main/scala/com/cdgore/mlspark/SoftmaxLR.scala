@@ -33,7 +33,6 @@ import org.apache.mahout.math.DenseVector
 import org.jblas.DoubleMatrix
 import org.jblas.MatrixFunctions
 
-
 /**
  * @author cdgore
  *
@@ -84,8 +83,8 @@ object SoftmaxLR extends Serializable {
   }
 
   def calculateLRGradient(tC: String, x: DoubleMatrix, weights: Array[(String, DoubleMatrix)], 
-      lr: Double, reg: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double) 
-      => DoubleMatrix = (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1): Iterator[(String, DoubleMatrix)] = {
+      lr: Double, reg: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double)  => DoubleMatrix
+      = (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1): Iterator[(String, DoubleMatrix)] = {
     val catIDTargetExpTransW = weights.map {
       case (wC, w) => (wC, tC equals wC match {
         case a if a => 1
@@ -96,8 +95,7 @@ object SoftmaxLR extends Serializable {
     for (eT <- catIDTargetExpTransW)
       summedExpTrans += eT._3
     return catIDTargetExpTransW.map {
-      case (wC, y, expTrans, w) => (wC, (regUpdate(x.mul(y - (expTrans / summedExpTrans)), w, reg).sub(w.mul(2 * reg))).mul(lr))
-//      case (wC, y, expTrans, w) => (wC, ((x.mul(y - (expTrans / summedExpTrans))).sub(w.mul(2 * reg))).mul(lr))
+      case (wC, y, expTrans, w) => (wC, (regUpdate(x.mul(y - (expTrans / summedExpTrans)), w, reg)).mul(lr))
     }.seq
   }
   
@@ -140,18 +138,18 @@ object SoftmaxLR extends Serializable {
 //    }.seq
 //  }
 
-  def trainLR (sc: spark.SparkContext, data: spark.RDD[(String, DoubleMatrix)], learningRateAlpha: Double, l2Lambda: Double, miniBatchTrainingPercentage: Double, maxIterations: Int, lossFile: String): spark.RDD[(String, org.jblas.DoubleMatrix)] = {
+  def trainLR (sc: spark.SparkContext, data: spark.RDD[(String, DoubleMatrix)], learningRateAlpha: Double,
+      regLambda: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double) => DoubleMatrix, miniBatchTrainingPercentage: Double,
+      maxIterations: Int, lossFile: String): spark.RDD[(String, org.jblas.DoubleMatrix)] = {
     // Initialize weight vector
 //    var W = sc.broadcast(categories.map{ case x => (x, DoubleMatrix.randn(numClusters)) })
     val discountClass = data.map { case (c, u) => c }.distinct.collect
     val numFeatures = data.first._2.length
     var W = discountClass.map{ case x => (x, DoubleMatrix.randn(numFeatures)) }
     
+    // Keep track of loss over training
     var sgdLossList = List[(Int, Double)]()
-//    val learningRateAlpha = 0.44
-//    val l2Lambda = 0.03
     var iterationNumber = 0
-//	val maxIterations = 300
 
 	for (i <- 1 to maxIterations) {
 	  iterationNumber += 1
@@ -159,7 +157,7 @@ object SoftmaxLR extends Serializable {
       
 	  // Calculate gradient for each category for each user
       val newDataSet = data.flatMap {
-    	case (targetCat, x) => calculateLRGradient(targetCat, x, W, learningRateAlpha, l2Lambda)
+    	case (targetCat, x) => calculateLRGradient(targetCat, x, W, learningRateAlpha, regLambda, regUpdate)
       }
       
       val new2 = newDataSet.map { case (k, v) => (k, (v, 1)) }
@@ -245,12 +243,13 @@ object SoftmaxLR extends Serializable {
     if (System.getProperty("inputFeatureFile") == null || System.getProperty("inputClassFile") == null ||
         System.getProperty("inputTargetFile") == null || System.getProperty("parametersOutputFile") == null ||
         System.getProperty("maxIterations") == null || System.getProperty("learningRateAlpha") == null || 
-        System.getProperty("l2Lambda") == null)
-      throw new IOException("ERROR: Must specify properties 'inputFeatureFile', 'inputClassFile', 'inputTargetFile', 'parametersOutputFile', 'maxIterations', 'learningRateAlpha', and 'l2Lambda'")
+        System.getProperty("regLambda") == null)
+      throw new IOException("ERROR: Must specify properties 'inputFeatureFile', 'inputClassFile', 'inputTargetFile', 'parametersOutputFile', 'maxIterations', 'learningRateAlpha', and 'regLambda'")
     System.getProperties().list(System.out)
     
+    // Get model parameters from system properties
     val learningRateAlpha = System.getProperty("learningRateAlpha").toDouble//0.44
-    val l2Lambda = System.getProperty("l2Lambda").toDouble//0.03
+    val regLambda = System.getProperty("regLambda").toDouble//0.03
 	val maxIterations = System.getProperty("maxIterations").toInt//300
     val inputFeatureFile = System.getProperty("inputFeatureFile")
     val inputClassFile = System.getProperty("inputClassFile")
@@ -260,7 +259,12 @@ object SoftmaxLR extends Serializable {
       case null => 1.0
       case x => x.toDouble
     }
-//    val miniBatchTrainingPercentage = 0.667
+    val regularizationPrior = System.getProperty("regularization") match {
+      case "l1" => l1Update _
+      case "l2" => l2Update _
+      case _ => (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1
+    }
+    
     val lossFile = System.getProperty("lossFile")
     val offer_id_incentive_class = sc.sequenceFile[IntWritable, Text](inputClassFile).map {
       case(k, v) => (k.get, v.toString)}
@@ -271,7 +275,7 @@ object SoftmaxLR extends Serializable {
         case(k, (v1, v2)) => (v2, v1)
         }.persist(spark.storage.StorageLevel.MEMORY_AND_DISK_SER)
     
-    val weights = trainLR (sc, data, learningRateAlpha, l2Lambda, miniBatchTrainingPercentage, maxIterations, lossFile)
+    val weights = trainLR (sc, data, learningRateAlpha, regLambda, regularizationPrior, miniBatchTrainingPercentage, maxIterations, lossFile)
     
     // Write weights to file
     weights.map{
