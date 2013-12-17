@@ -31,6 +31,8 @@ import org.apache.mahout.math.VectorWritable
 import org.apache.mahout.math.DenseVector
 
 import org.jblas.DoubleMatrix
+import org.jblas.MatrixFunctions
+
 
 /**
  * @author cdgore
@@ -72,8 +74,18 @@ object SoftmaxLR extends Serializable {
 //  def parseTextDoubleMatrix(key: Text, line: Text): (Text, DoubleMatrix) = {
 //    return (key, new DoubleMatrix(line.toString().split('\t').map(_.toDouble)))
 //  }
+  
+  def l1Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double): DoubleMatrix = {
+    return subGradient1.sub(MatrixFunctions.signum(w).mul(reg))
+  }
+  
+  def l2Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double): DoubleMatrix = {
+    return subGradient1.sub(w.mul(2 * reg))
+  }
 
-  def calculateLRGradient(tC: String, x: DoubleMatrix, weights: Array[(String, DoubleMatrix)], lr: Double, reg: Double): Iterator[(String, DoubleMatrix)] = {
+  def calculateLRGradient(tC: String, x: DoubleMatrix, weights: Array[(String, DoubleMatrix)], 
+      lr: Double, reg: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double) 
+      => DoubleMatrix = (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1): Iterator[(String, DoubleMatrix)] = {
     val catIDTargetExpTransW = weights.map {
       case (wC, w) => (wC, tC equals wC match {
         case a if a => 1
@@ -84,7 +96,7 @@ object SoftmaxLR extends Serializable {
     for (eT <- catIDTargetExpTransW)
       summedExpTrans += eT._3
     return catIDTargetExpTransW.map {
-      case (wC, y, expTrans, w) => (wC, ((x.mul(y - (expTrans / summedExpTrans))).sub(w.mul(2 * reg))).mul(lr))
+      case (wC, y, expTrans, w) => (wC, (regUpdate(x.mul(y - (expTrans / summedExpTrans)), w, reg).sub(w.mul(2 * reg))).mul(lr))
 //      case (wC, y, expTrans, w) => (wC, ((x.mul(y - (expTrans / summedExpTrans))).sub(w.mul(2 * reg))).mul(lr))
     }.seq
   }
