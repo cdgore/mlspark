@@ -25,6 +25,7 @@ object Builds extends Build {
     organization := "com.cdgore",
     version := "0.0.1",
     scalaVersion := "2.9.3",
+    // scalaVersion := "2.10.3",
     // scalacOptions := Seq("-unchecked", "-optimize", "-deprecation", "-target:jvm-1.5"),
     // javacOptions := Seq("-source", "1.5", "-target", "1.5"),
     // unmanagedJars in Compile <<= baseDirectory map { base => (base / "lib" ** "*.jar").classpath },
@@ -45,12 +46,14 @@ object Builds extends Build {
       // "org.jboss.netty" % "netty" % "3.2.4.Final",
       "com.typesafe.akka" % "akka-actor" % "2.0.5" excludeAll(excludeNetty),
       "com.typesafe.akka" % "akka-remote" % "2.0.5" excludeAll(excludeNetty),
-      "com.typesafe.akka" % "akka-slf4j" % "2.0.5" excludeAll(excludeNetty)
-      // "org.eclipse.jetty" % "jetty-server" % "7.6.8.v20121106",
-      // "org.scalatest" %% "scalatest" % "1.9.1" % "test",
-      // "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
-      // "com.novocode" % "junit-interface" % "0.9" % "test",
-      // "org.easymock" % "easymock" % "3.1" % "test"
+      "com.typesafe.akka" % "akka-slf4j" % "2.0.5" excludeAll(excludeNetty),
+      "log4j" % "log4j" % "1.2.17",
+      // "org.scalatest" % "scalatest_2.9.1" % "1.9.1"
+      "org.eclipse.jetty" % "jetty-server" % "7.6.8.v20121106",
+      "org.scalatest" %% "scalatest" % "1.9.1" % "test",
+      "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
+      "com.novocode" % "junit-interface" % "0.9" % "test",
+      "org.easymock" % "easymock" % "3.1" % "test"
     )
   )
   

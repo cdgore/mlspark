@@ -74,28 +74,42 @@ object SoftmaxLR extends Serializable {
 //    return (key, new DoubleMatrix(line.toString().split('\t').map(_.toDouble)))
 //  }
   
-  def l1Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double): DoubleMatrix = {
-    return subGradient1.sub(MatrixFunctions.signum(w).mul(reg))
+  // Naive L1 penalty
+  def l1Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double, lr: Double): DoubleMatrix = {
+    return w.add(subGradient1.sub(MatrixFunctions.signum(w).mul(reg)).mul(lr))
   }
   
-  def l2Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double): DoubleMatrix = {
-    return subGradient1.sub(w.mul(2 * reg))
+  // L1 penalty with "clipping"
+  def l1ClippingUpdate(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double, lr: Double): DoubleMatrix = {
+    return new DoubleMatrix(w.add(subGradient1.mul(lr)).toArray.map(x => x match {
+      case k if k > 0 => math.max(0, k - (reg * lr))
+      case k if k < 0 => math.min(0, k + (reg * lr))
+      case _ => 0
+    }))
+  }
+  
+  def l2Update(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double, lr: Double): DoubleMatrix = {
+    return w.add(subGradient1.sub(w.mul(2 * reg)).mul(lr))
+  }
+  
+  def simpleUpdate(subGradient1: DoubleMatrix, w: DoubleMatrix, reg: Double, lr: Double): DoubleMatrix = {
+    return w.add(subGradient1.mul(lr))
   }
 
-  def calculateLRGradient(tC: String, x: DoubleMatrix, weights: Array[(String, DoubleMatrix)], 
-      lr: Double, reg: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double)  => DoubleMatrix
-      = (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1): Iterator[(String, DoubleMatrix)] = {
+  def calculateLRGradient(tC: String, x: DoubleMatrix, weights: Array[(String, DoubleMatrix)]): Iterator[(String, DoubleMatrix)] = {
     val catIDTargetExpTransW = weights.map {
       case (wC, w) => (wC, tC equals wC match {
         case a if a => 1
         case a if !a => 0
-      }, math.exp(w.dot(x)), w)
+      }, math.exp(w.dot(x)), w)// Numerator of softmax function: exp(wTx)
     }
-    var summedExpTrans = 0.0
-    for (eT <- catIDTargetExpTransW)
-      summedExpTrans += eT._3
+    // Denominator of softmax function: Sum(exp(wTx))
+    val summedExpTrans = catIDTargetExpTransW.map{case (a, b, c, d) => c}.sum
     return catIDTargetExpTransW.map {
-      case (wC, y, expTrans, w) => (wC, (regUpdate(x.mul(y - (expTrans / summedExpTrans)), w, reg)).mul(lr))
+      case (wC, y, expTrans, w) => (wC, x.mul(y - (expTrans / summedExpTrans)))
+//      case (wC, y, expTrans, w) => (wC, regUpdate(x.mul(y - (expTrans / summedExpTrans)), w, reg/numSamples, lr))
+//      regUpdate: (DoubleMatrix, DoubleMatrix, Double, Double)  => DoubleMatrix = simpleUpdate
+//      lr: Double, reg: Double, numSamples: Double
     }.seq
   }
   
@@ -106,9 +120,7 @@ object SoftmaxLR extends Serializable {
         case a if !a => 0
       }, math.exp(w.dot(x)))
     }
-    var summedExpTrans = 0.0
-    for (eT <- catIDTargetExpTransW)
-      summedExpTrans += eT._3
+    val summedExpTrans = catIDTargetExpTransW.map{case (a, b, c) => c}.sum
     return catIDTargetExpTransW.map {
       case (wC, y, expTrans) => (wC, y * math.log(expTrans / summedExpTrans))
     }.seq
@@ -139,13 +151,16 @@ object SoftmaxLR extends Serializable {
 //  }
 
   def trainLR (sc: spark.SparkContext, data: spark.RDD[(String, DoubleMatrix)], learningRateAlpha: Double,
-      regLambda: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double) => DoubleMatrix, miniBatchTrainingPercentage: Double,
+      regLambda: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double, Double) => DoubleMatrix = simpleUpdate, miniBatchTrainingPercentage: Double,
       maxIterations: Int, lossFile: String): spark.RDD[(String, org.jblas.DoubleMatrix)] = {
     // Initialize weight vector
 //    var W = sc.broadcast(categories.map{ case x => (x, DoubleMatrix.randn(numClusters)) })
     val discountClass = data.map { case (c, u) => c }.distinct.collect
     val numFeatures = data.first._2.length
     var W = discountClass.map{ case x => (x, DoubleMatrix.randn(numFeatures)) }
+    
+    // Get the number of samples
+//    val numSamples = data.count * miniBatchTrainingPercentage
     
     // Keep track of loss over training
     var sgdLossList = List[(Int, Double)]()
@@ -156,24 +171,18 @@ object SoftmaxLR extends Serializable {
 	  println("Iteration number: " + iterationNumber + "/" + maxIterations)
       
 	  // Calculate gradient for each category for each user
-      val newDataSet = data.flatMap {
-    	case (targetCat, x) => calculateLRGradient(targetCat, x, W, learningRateAlpha, regLambda, regUpdate)
-      }
-      
-      val new2 = newDataSet.map { case (k, v) => (k, (v, 1)) }
-      
-      // Use minibatch training
-      val new2sample = new2.sample(false, miniBatchTrainingPercentage, 43)
-
-      val new3 = new2sample.reduceByKey { case ((a1, b1), (a2, b2)) => (a1.addi(a2), b1 + b2)}.persist(spark.storage.StorageLevel.MEMORY_AND_DISK)
-
-      val new4 = new3.map { case (c, (w, n)) => (c, w.divi(n)) }
-//      val new4 = new3.map { case (c, (w, n)) => (c, (w.divi(n).sub(w.mul(2 * reg))).mul(lr)) }
-
-      val new5 = new4.join(sc.parallelize(W))
-
-      W = new5.map{ case (k, (v1, v2)) => (k, v1.addi(v2)) }.collect()
-
+      W = data.flatMap {
+    	case (targetCat, x) => calculateLRGradient(targetCat, x, W)
+      }.map {
+        case (k, v) => (k, (v, 1))
+      }.sample(false, miniBatchTrainingPercentage, 43).reduceByKey {
+        case ((a1, b1), (a2, b2)) => (a1.add(a2), b1 + b2)
+      }.map {
+        case (c, (w, n)) => (c, w.div(n))
+      }.join(sc.parallelize(W)).map{
+        case (k, (v1, v2)) => (k, regUpdate(v1, v2, regLambda, learningRateAlpha))
+      }.collect()
+	  
       // Log SGD error
       if (lossFile != null) {
         val sgdLossTmp = data.flatMap {
@@ -262,7 +271,7 @@ object SoftmaxLR extends Serializable {
     val regularizationPrior = System.getProperty("regularization") match {
       case "l1" => l1Update _
       case "l2" => l2Update _
-      case _ => (subGradient1: DoubleMatrix, w1: DoubleMatrix, reg1: Double) => subGradient1
+      case _ => simpleUpdate _
     }
     
     val lossFile = System.getProperty("lossFile")
