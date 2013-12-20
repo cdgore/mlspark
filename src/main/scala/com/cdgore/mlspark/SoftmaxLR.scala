@@ -270,6 +270,7 @@ object SoftmaxLR extends Serializable {
     }
     val regularizationPrior = System.getProperty("regularization") match {
       case "l1" => l1Update _
+      case "l1clipping" => l1ClippingUpdate _
       case "l2" => l2Update _
       case _ => simpleUpdate _
     }
