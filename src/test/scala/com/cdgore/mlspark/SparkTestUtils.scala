@@ -27,8 +27,8 @@ trait SparkTestUtils extends FunSuite {
       finally {
         sc.stop
         sc = null
-        // To avoid Akka rebinding to the same port, since it doesn't unbind immediately on shutdown
-        System.clearProperty("spark.master.port")
+        // Sleep thread for 2 seconds between tests to allow time for Akka socket to rebind port
+        Thread.sleep(2000)
 //        if (silenceSpark) Logging.setLogLevels(origLogLevels)
       }
     }
