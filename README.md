@@ -1,8 +1,8 @@
-mlspark
+ML Spark
 =======
 [![Build Status](https://travis-ci.org/cdgore/mlspark.png?branch=master)](https://travis-ci.org/cdgore/mlspark)
 
-Machine learning algorithms implemented in Scala on Spark
+Machine learning algorithms implemented in Scala on [Spark](https://github.com/apache/incubator-spark)
 
 Currently 4 models are included:
 
