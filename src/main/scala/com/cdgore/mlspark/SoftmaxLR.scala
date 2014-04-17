@@ -10,9 +10,10 @@ import java.io._
 import java.util.Random
 import java.util.Properties
 
-import spark.SparkContext
-import spark.SparkContext._
-import spark.util.Vector
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+import org.apache.spark.util.Vector
 
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.HashSet
@@ -150,9 +151,9 @@ object SoftmaxLR extends Serializable {
 //    }.seq
 //  }
 
-  def trainLR (sc: spark.SparkContext, data: spark.RDD[(String, DoubleMatrix)], learningRateAlpha: Double,
+  def trainLR (sc: spark.SparkContext, data: spark.rdd.RDD[(String, DoubleMatrix)], learningRateAlpha: Double,
       regLambda: Double, regUpdate: (DoubleMatrix, DoubleMatrix, Double, Double) => DoubleMatrix = simpleUpdate, miniBatchTrainingPercentage: Double,
-      maxIterations: Int, lossFile: String): spark.RDD[(String, org.jblas.DoubleMatrix)] = {
+      maxIterations: Int, lossFile: String): spark.rdd.RDD[(String, org.jblas.DoubleMatrix)] = {
     // Initialize weight vector
 //    var W = sc.broadcast(categories.map{ case x => (x, DoubleMatrix.randn(numClusters)) })
     val discountClass = data.map { case (c, u) => c }.distinct.collect

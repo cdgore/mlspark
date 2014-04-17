@@ -3,8 +3,8 @@ package com.cdgore.test.mlspark
 import org.scalatest.FunSuite
 import org.scalatest.matchers.ShouldMatchers
 
-import spark.SparkContext
-import spark.SparkContext._
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 import com.cdgore.mlspark.SoftmaxLR
 

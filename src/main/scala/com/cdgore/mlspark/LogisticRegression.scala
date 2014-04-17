@@ -5,8 +5,9 @@
  */
 package com.cdgore.mlspark
 
-import spark.SparkContext
-import spark.SparkContext._
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 import java.io.FileInputStream
 import java.io.IOException
@@ -38,23 +39,23 @@ object LogisticRegression extends App {
     return (line.split("\t")(2), line.split("\t")(0), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
   }
 
-  def saveAsCSV(rdd: spark.RDD[(String, String)], path: String, delim: String = ",") {
+  def saveAsCSV(rdd: spark.rdd.RDD[(String, String)], path: String, delim: String = ",") {
     rdd.map(x => (NullWritable.get(), new Text(x._1 + delim + x._2)))
       .saveAsHadoopFile[TextOutputFormat[NullWritable, Text]](path)
   }
 
-  def SaveRDDAsHadoopFile(rdd: spark.RDD[(String, String)], path: String) {
+  def SaveRDDAsHadoopFile(rdd: spark.rdd.RDD[(String, String)], path: String) {
     rdd.map(x => (new Text(x._1), new Text(x._2)))
       .saveAsHadoopFile[TextOutputFormat[Text, Text]](path)
   }
 
-//  def SaveRDDAsHadoopFile(rdd: spark.RDD[String], path: String) {
+//  def SaveRDDAsHadoopFile(rdd: spark.rdd.RDD[String], path: String) {
 //    rdd.map(x => (NullWritable.get(), new Text(x.toString())))
 //      .saveAsHadoopFile[TextOutputFormat[NullWritable, Text]](path)
 //  }
   
   // Train
-  def train(trainData: spark.RDD[(Int, DoubleMatrix)], sc: SparkContext, learningRateAlpha: Double, l2Lambda: Double, maxIterations: Int): DoubleMatrix = {
+  def train(trainData: spark.rdd.RDD[(Int, DoubleMatrix)], sc: SparkContext, learningRateAlpha: Double, l2Lambda: Double, maxIterations: Int): DoubleMatrix = {
     // Initialize weight vector
     val numFeatures = trainData.first._2.length
     var W = DoubleMatrix.randn(numFeatures).muli(2).subi(1)
@@ -73,7 +74,7 @@ object LogisticRegression extends App {
   }
 
   // Predict
-  def predict(predictData: spark.RDD[(String, String, org.jblas.DoubleMatrix)], W: DoubleMatrix): spark.RDD[(String, String)] = {
+  def predict(predictData: spark.rdd.RDD[(String, String, org.jblas.DoubleMatrix)], W: DoubleMatrix): spark.rdd.RDD[(String, String)] = {
     predictData.map {
       case(l, uid, x) => (uid, math.round(1 / (1 + exp(W.dot(preprocessFeatures(x))))).toString)
     }

@@ -10,9 +10,10 @@ import java.io._
 import java.util.Random
 import java.util.Properties
 
-import spark.SparkContext
-import spark.SparkContext._
-import spark.util.Vector
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+import org.apache.spark.util.Vector
 
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.HashSet
@@ -174,8 +175,8 @@ object KMeans extends Serializable {
     return bestIndex
   }
 
-//  def generateClusters(data: spark.RDD[Vector], K: Int, maxNumIter: Int, outputFile: String) {
-  def generateClusters(data: spark.RDD[DoubleMatrix], distMeasure: (DoubleMatrix, DoubleMatrix) => Double,  K: Int, maxNumIter: Int, outputFile: String) {
+//  def generateClusters(data: spark.rdd.RDD[Vector], K: Int, maxNumIter: Int, outputFile: String) {
+  def generateClusters(data: spark.rdd.RDD[DoubleMatrix], distMeasure: (DoubleMatrix, DoubleMatrix) => Double,  K: Int, maxNumIter: Int, outputFile: String) {
     var clusterMeans = data.takeSample(false, K, 42).toArray
     var clusterSigmas = Array[Double]()
     var previousCentroids = Array[DoubleMatrix]()

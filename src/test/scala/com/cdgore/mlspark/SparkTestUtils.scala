@@ -5,8 +5,9 @@ import org.scalatest.tools.ScalaTestFramework
 
 import org.apache.log4j.{Level, Logger}
 
-import spark.SparkContext
-import spark.SparkContext._
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 object SparkTest extends org.scalatest.Tag("com.cdgore.test.tags.SparkTest")
 
@@ -29,6 +30,7 @@ trait SparkTestUtils extends FunSuite {
         sc = null
         // Sleep thread for 2 seconds between tests to allow time for Akka socket to rebind port
         Thread.sleep(2000)
+//        System.clearProperty("spark.master.port")
 //        if (silenceSpark) Logging.setLogLevels(origLogLevels)
       }
     }

@@ -5,8 +5,9 @@
  */
 package com.cdgore.mlspark
 
-import spark.SparkContext
-import spark.SparkContext._
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 import java.io.FileInputStream
 import java.io.IOException
@@ -31,30 +32,30 @@ object GaussianNaiveBayes extends App {
 //  }
 
   def parseTrainData(line: String): (String, DoubleMatrix) = {
-    return (line.split("\t")(2), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
+    (line.split("\t")(2), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
   }
 
   def parsePredictData(line: String): (String, String, DoubleMatrix) = {
-    return (line.split("\t")(2), line.split("\t")(0), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
+    (line.split("\t")(2), line.split("\t")(0), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
   }
 
-  def saveAsCSV(rdd: spark.RDD[(String, String)], path: String, delim: String = ",") {
+  def saveAsCSV(rdd: spark.rdd.RDD[(String, String)], path: String, delim: String = ",") {
     rdd.map(x => (NullWritable.get(), new Text(x._1 + delim + x._2)))
       .saveAsHadoopFile[TextOutputFormat[NullWritable, Text]](path)
   }
 
-  def SaveRDDAsHadoopFile(rdd: spark.RDD[(String, String)], path: String) {
+  def SaveRDDAsHadoopFile(rdd: spark.rdd.RDD[(String, String)], path: String) {
     rdd.map(x => (new Text(x._1), new Text(x._2)))
       .saveAsHadoopFile[TextOutputFormat[Text, Text]](path)
   }
 
-//  def SaveRDDAsHadoopFile(rdd: spark.RDD[String], path: String) {
+//  def SaveRDDAsHadoopFile(rdd: spark.rdd.RDD[String], path: String) {
 //    rdd.map(x => (NullWritable.get(), new Text(x.toString())))
 //      .saveAsHadoopFile[TextOutputFormat[NullWritable, Text]](path)
 //  }
   
   def getClassMeans(x: String, cMeans: Array[(String, DoubleMatrix)]): DoubleMatrix = {
-    return cMeans.filter{
+    cMeans.filter{
       case(c, mu) => c.equals(x)
     }.map{
       case(a, b) => b
@@ -62,42 +63,50 @@ object GaussianNaiveBayes extends App {
   }
 
   def getSquaredDifferences(x: DoubleMatrix, mu: DoubleMatrix): DoubleMatrix = {
-    return pow(x.subi(mu), 2)
+    pow(x.subi(mu), 2)
   }
   
   def applyGaussian(mu: DoubleMatrix, sigma: DoubleMatrix, x: DoubleMatrix): DoubleMatrix = {
-    return sqrt(pow(sigma, 2).mul(2.0 * scala.math.Pi)).rdiv(1).mul(exp(pow(x.sub(mu), 2).div(pow(sigma, 2).mul(2.0)).mul(-1.0)))
+    sqrt(pow(sigma, 2).mul(2.0 * scala.math.Pi)).rdiv(1).mul(exp(pow(x.sub(mu), 2).div(pow(sigma, 2).mul(2.0)).mul(-1.0)))
   }
   
   def sumLogLikelihoods(mu: DoubleMatrix, sigma: DoubleMatrix, x: DoubleMatrix): Double = {
-    return log(applyGaussian(mu, sigma, x)).sum
+    log(applyGaussian(mu, sigma, x)).sum
   }
   
   def generateClassPosteriorDistributions(x: DoubleMatrix, classParameters: Array[(String, ((org.jblas.DoubleMatrix, org.jblas.DoubleMatrix), Double))]): Array[(String, Double)] = {
-    return classParameters.map {
+    classParameters.map {
       case (cL, ((m, sig), pri)) => (cL, exp(sumLogLikelihoods(m, sig, x) + scala.math.log(pri)))
     }
   }
   
   // Train
-  def train(trainData: spark.RDD[(String, DoubleMatrix)], sc: SparkContext): spark.RDD[(String, ((DoubleMatrix, DoubleMatrix), Double))] = {
+  def train(trainData: spark.rdd.RDD[(String, DoubleMatrix)], sc: SparkContext): spark.rdd.RDD[(String, ((DoubleMatrix, DoubleMatrix), Double))] = {
     // Calculate class means
-    val classMeans = trainData.map {
-      case (k, v) => (k, (v, 1))
-    }.reduceByKey {
-      case ((v1, c1), (v2, c2)) => (v1.add(v2), c1 + c2)
-    }.map {
+    val numFeatures = trainData.first._2.length
+    val classMeans = trainData.combineByKey[(DoubleMatrix, Long)] (
+        (v: DoubleMatrix) => (v, 1.toLong),
+        (c: (DoubleMatrix, Long), v: DoubleMatrix) => (c._1.addi(v), c._2 + 1.toLong),
+        (c1: (DoubleMatrix, Long), c2: (DoubleMatrix, Long)) => (c1._1.addi(c2._1), c1._2 + c2._2)
+    ).map {
       case (k, (v, c)) => (k, v.div(c))
     }.collect()
+    
     val classM = sc.parallelize(classMeans)
+    
+    // Variance smoothening, mostly for cases where there is no variance on a feature
+    // within a class
+    val epsilon = 1e-9
     
     // Calculate class standard deviations
     val classSDs = trainData.map {
-      case (k, x) => (k, (getSquaredDifferences(x, getClassMeans(k, classMeans)), 1))
-    }.reduceByKey {
-      case ((d1, c1), (d2, c2)) => (d1.addi(d2), c1 + c2)
-    }.map {
-      case (k, (d, c)) => (k, sqrti(d.divi(c)))
+      case (k, x) => (k, (getSquaredDifferences(x, getClassMeans(k, classMeans)), 1.toLong))
+    }.combineByKey[(DoubleMatrix, Long)](
+        (v: (DoubleMatrix, Long)) => v,
+        (c: (DoubleMatrix, Long), v: (DoubleMatrix, Long)) => (c._1.addi(v._1), c._2 + v._2),
+        (c1: (DoubleMatrix, Long), c2: (DoubleMatrix, Long)) => (c1._1.addi(c2._1), c1._2 + c2._2)
+    ).map {
+      case (k, (d, c)) => (k, sqrti(d.divi(c)).addi(epsilon))
     }.collect()
     val classS = sc.parallelize(classSDs)
     
@@ -115,16 +124,16 @@ object GaussianNaiveBayes extends App {
     val classP = sc.parallelize(classPriors)
     
     // Join and return class means, standard deviations, and priors
-    return classM.join(classS).join(classP)
+    classM.join(classS).join(classP)
   }
 
   // Predict
-  def predict(predictData: spark.RDD[(String, String, org.jblas.DoubleMatrix)], classParamsArray: Array[(String, ((DoubleMatrix, DoubleMatrix), Double))]): spark.RDD[(String, String)] = {
+  def predict(predictData: spark.rdd.RDD[(String, String, org.jblas.DoubleMatrix)], classParamsArray: Array[(String, ((DoubleMatrix, DoubleMatrix), Double))]): spark.rdd.RDD[(String, String)] = {
     val classPosteriorDistributions = predictData.map {
       case (targetVar, rowId, features) => (rowId, generateClassPosteriorDistributions(features, classParamsArray))
     }
 
-    return classPosteriorDistributions.map {
+    classPosteriorDistributions.map {
       case (rowId, posteriorProbs: Array[(String, Double)]) => (rowId, posteriorProbs.foldLeft(("", -1.0))((b, a) => if (a._2 > b._2) (a._1, a._2) else (b._1, b._2)))
     }.map {
       case (rowId, (predictedClass, postProb)) => (rowId, predictedClass)

@@ -1,9 +1,13 @@
 package com.cdgore.mlspark.io
 
+import org.apache.spark
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+
+import org.apache.spark.util.Vector
+
 import java.util.Random
-import spark.SparkContext
-import spark.util.Vector
-import spark.SparkContext._
+
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.HashSet
 import scala.util.parsing.json._
