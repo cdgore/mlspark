@@ -27,10 +27,6 @@ import org.jblas.MatrixFunctions._
  *
  */
 object GaussianNaiveBayes extends App {
-//  def parseData(line: String): (String, DoubleMatrix) = {
-//    return (line.split(",")(0), new DoubleMatrix(line.split(",")(1).split("\t").map(_.toDouble)))
-//  }
-
   def parseTrainData(line: String): (String, DoubleMatrix) = {
     (line.split("\t")(2), new DoubleMatrix(line.split("\t").slice(3, line.length).map(_.toDouble)))
   }
@@ -48,11 +44,6 @@ object GaussianNaiveBayes extends App {
     rdd.map(x => (new Text(x._1), new Text(x._2)))
       .saveAsHadoopFile[TextOutputFormat[Text, Text]](path)
   }
-
-//  def SaveRDDAsHadoopFile(rdd: spark.rdd.RDD[String], path: String) {
-//    rdd.map(x => (NullWritable.get(), new Text(x.toString())))
-//      .saveAsHadoopFile[TextOutputFormat[NullWritable, Text]](path)
-//  }
   
   def getClassMeans(x: String, cMeans: Array[(String, DoubleMatrix)]): DoubleMatrix = {
     cMeans.filter{

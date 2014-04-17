@@ -28,7 +28,7 @@ object Builds extends Build {
   lazy val buildSettings = Defaults.defaultSettings ++ Seq(
     name := "MLSpark",
     organization := "com.cdgore",
-    version := "0.0.1",
+    version := "0.0.2",
     scalaVersion := "2.9.3",
     // scalaVersion := "2.10.3",
     // scalacOptions := Seq("-unchecked", "-optimize", "-deprecation", "-target:jvm-1.5"),
